@@ -20,11 +20,16 @@ try {
     }
 
     $content = $data['content'];
+    $messageType = $data['message_type'] ?? 'text';
+    if (!in_array($messageType, ['text', 'image'])) {
+        $messageType = 'text';
+    }
+
     $userId = 2; // Hardcoding user ID to 2 (Jules) for now
 
     // Insert the message
-    $stmt = $pdo->prepare("INSERT INTO chat_messages_v2 (user_id, content) VALUES (:user_id, :content)");
-    $stmt->execute(['user_id' => $userId, 'content' => $content]);
+    $stmt = $pdo->prepare("INSERT INTO chat_messages_v2 (user_id, message_type, content) VALUES (:user_id, :message_type, :content)");
+    $stmt->execute(['user_id' => $userId, 'message_type' => $messageType, 'content' => $content]);
 
     $messageId = $pdo->lastInsertId();
 
@@ -59,7 +64,7 @@ try {
         $options
     );
 
-    // Trigger the new-message event
+    // Trigger the new-message event on global-chat-channel
     $pusher->trigger('global-chat-channel', 'new-message', $messageData);
 
     echo json_encode(['success' => true, 'message' => $messageData]);
