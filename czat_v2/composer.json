@@ -1,0 +1,12 @@
+{
+    "name": "jules/czat_v2",
+    "authors": [
+        {
+            "name": "Jules",
+            "email": "jules@example.com"
+        }
+    ],
+    "require": {
+        "pusher/pusher-php-server": "^7.2"
+    }
+}
