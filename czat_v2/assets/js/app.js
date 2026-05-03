@@ -57,10 +57,107 @@ document.addEventListener('DOMContentLoaded', () => {
         bubbleContent.appendChild(contentElement);
         bubbleContent.appendChild(timeSpan);
 
+        // --- Reactions UI ---
+        // Hidden React button
+        const reactButtonContainer = document.createElement('div');
+        reactButtonContainer.className = `absolute top-0 ${isMine ? 'left-[-30px]' : 'right-[-30px]'} hidden group-hover:flex items-center justify-center h-full`;
+
+        const reactBtn = document.createElement('button');
+        reactBtn.innerHTML = '&#x1F600;'; // Smiley icon
+        reactBtn.className = 'text-xl hover:scale-110 transition-transform bg-gray-800 rounded-full w-8 h-8 flex items-center justify-center border border-gray-600 shadow-lg';
+
+        const pickerContainer = document.createElement('div');
+        pickerContainer.className = 'absolute top-[-40px] left-[-50px] bg-gray-800 border border-gray-600 rounded-lg p-1 shadow-xl flex space-x-2 hidden z-50';
+
+        const emojis = ['👍', '❤️', '😂', '😲', '😢'];
+        emojis.forEach(emoji => {
+            const btn = document.createElement('button');
+            btn.innerText = emoji;
+            btn.className = 'hover:scale-125 transition-transform text-lg px-1';
+            btn.addEventListener('click', () => {
+                pickerContainer.classList.add('hidden');
+                fetch('api/react.php', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ message_id: msg.id, emoji })
+                }).catch(err => console.error('Reaction error:', err));
+            });
+            pickerContainer.appendChild(btn);
+        });
+
+        reactBtn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            pickerContainer.classList.toggle('hidden');
+        });
+
+        // Close picker if clicked outside
+        document.addEventListener('click', (e) => {
+            if (!pickerContainer.contains(e.target) && !reactBtn.contains(e.target)) {
+                pickerContainer.classList.add('hidden');
+            }
+        });
+
+        reactButtonContainer.appendChild(reactBtn);
+        reactButtonContainer.appendChild(pickerContainer);
+
+        // We wrap the bubble to hold the absolute react button
+        const bubbleWrapper = document.createElement('div');
+        bubbleWrapper.className = 'relative group';
+        bubbleWrapper.appendChild(bubbleContent);
+        bubbleWrapper.appendChild(reactButtonContainer);
+
+        // Reactions display area
+        const reactionsDisplay = document.createElement('div');
+        reactionsDisplay.className = `flex flex-wrap mt-1 gap-1 ${isMine ? 'justify-end' : 'justify-start'}`;
+        reactionsDisplay.id = `reactions-${msg.id}`;
+
+        function renderReactionsDisplay(reactions) {
+            reactionsDisplay.innerHTML = '';
+            if (!reactions || reactions.length === 0) return;
+
+            const counts = {};
+            const userSelected = {};
+
+            reactions.forEach(r => {
+                counts[r.emoji] = (counts[r.emoji] || 0) + 1;
+                if (r.user_id == currentUserId) {
+                    userSelected[r.emoji] = true;
+                }
+            });
+
+            for (const [emoji, count] of Object.entries(counts)) {
+                const badge = document.createElement('div');
+                const isSelected = userSelected[emoji];
+                badge.className = `text-xs px-2 py-0.5 rounded-full border cursor-pointer select-none ${isSelected ? 'bg-blue-900 border-blue-500 text-blue-200' : 'bg-gray-800 border-gray-600 text-gray-300'} flex items-center space-x-1`;
+                badge.innerText = `${emoji} ${count}`;
+                badge.addEventListener('click', () => {
+                    // Click to toggle
+                    fetch('api/react.php', {
+                        method: 'POST',
+                        headers: {'Content-Type': 'application/json'},
+                        body: JSON.stringify({ message_id: msg.id, emoji })
+                    }).catch(err => console.error('Reaction toggle error:', err));
+                });
+                reactionsDisplay.appendChild(badge);
+            }
+        }
+
+        renderReactionsDisplay(msg.reactions);
+
+        const outerBubbleContainer = document.createElement('div');
+        outerBubbleContainer.className = 'flex flex-col';
+        outerBubbleContainer.appendChild(bubbleWrapper);
+        outerBubbleContainer.appendChild(reactionsDisplay);
+
         inner.appendChild(avatarImg);
-        inner.appendChild(bubbleContent);
+        inner.appendChild(outerBubbleContainer);
 
         wrapper.appendChild(inner);
+        wrapper.id = `msg-${msg.id}`;
+
+        // Save update function on wrapper for Pusher event
+        wrapper.updateReactions = renderReactionsDisplay;
+
         return wrapper;
     }
 
@@ -245,6 +342,13 @@ document.addEventListener('DOMContentLoaded', () => {
         channel.bind('new-message', function(data) {
             chatWindow.appendChild(renderMessage(data));
             scrollToBottom();
+        });
+
+        channel.bind('reaction-updated', function(data) {
+            const msgWrapper = document.getElementById(`msg-${data.message_id}`);
+            if (msgWrapper && typeof msgWrapper.updateReactions === 'function') {
+                msgWrapper.updateReactions(data.reactions);
+            }
         });
 
         // Presence channel subscription
