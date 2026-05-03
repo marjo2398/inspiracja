@@ -15,6 +15,13 @@ if (!isset($_FILES['image']) || $_FILES['image']['error'] !== UPLOAD_ERR_OK) {
 
 $file = $_FILES['image'];
 
+// Validate size (10 MB limit)
+if ($file['size'] > 10 * 1024 * 1024) {
+    http_response_code(400);
+    echo json_encode(['error' => 'File size exceeds the 10 MB limit.']);
+    exit;
+}
+
 // Validate MIME type
 $allowedMimeTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
 $fileMimeType = mime_content_type($file['tmp_name']);

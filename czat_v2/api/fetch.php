@@ -29,6 +29,28 @@ try {
     // Reverse to get chronological order (oldest to newest for rendering)
     $messages = array_reverse($messages);
 
+    // Fetch reactions for the retrieved messages
+    if (!empty($messages)) {
+        $messageIds = array_column($messages, 'id');
+        $placeholders = implode(',', array_fill(0, count($messageIds), '?'));
+
+        $reactionStmt = $pdo->prepare("SELECT message_id, user_id, emoji FROM chat_reactions_v2 WHERE message_id IN ($placeholders)");
+        $reactionStmt->execute($messageIds);
+        $allReactions = $reactionStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $reactionsByMessageId = [];
+        foreach ($allReactions as $reaction) {
+            $reactionsByMessageId[$reaction['message_id']][] = [
+                'user_id' => $reaction['user_id'],
+                'emoji' => $reaction['emoji']
+            ];
+        }
+
+        foreach ($messages as &$msg) {
+            $msg['reactions'] = $reactionsByMessageId[$msg['id']] ?? [];
+        }
+    }
+
     echo json_encode($messages);
 
 } catch (PDOException $e) {
