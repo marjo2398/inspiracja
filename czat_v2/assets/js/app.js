@@ -31,8 +31,21 @@ document.addEventListener('DOMContentLoaded', () => {
         nameSpan.className = 'text-xs font-semibold opacity-75';
         nameSpan.innerText = msg.username;
 
-        const textSpan = document.createElement('span');
-        textSpan.innerText = msg.content;
+        let contentElement;
+        if (msg.message_type === 'image') {
+            contentElement = document.createElement('img');
+            contentElement.src = msg.content;
+            contentElement.className = 'max-w-xs md:max-w-sm rounded-lg shadow-md cursor-pointer mt-1 border border-gray-600';
+            contentElement.alt = 'Uploaded Image';
+            contentElement.addEventListener('click', () => {
+                if (msg.content && (msg.content.startsWith('http://') || msg.content.startsWith('https://') || msg.content.startsWith('/'))) {
+                    window.open(msg.content, '_blank');
+                }
+            });
+        } else {
+            contentElement = document.createElement('span');
+            contentElement.innerText = msg.content;
+        }
 
         const timeSpan = document.createElement('span');
         timeSpan.className = 'text-[10px] opacity-50 text-right mt-1';
@@ -41,7 +54,7 @@ document.addEventListener('DOMContentLoaded', () => {
         timeSpan.innerText = isNaN(date.getTime()) ? msg.created_at : date.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
 
         bubbleContent.appendChild(nameSpan);
-        bubbleContent.appendChild(textSpan);
+        bubbleContent.appendChild(contentElement);
         bubbleContent.appendChild(timeSpan);
 
         inner.appendChild(avatarImg);
@@ -111,19 +124,147 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     });
 
+    // Sidebar dynamic users rendering
+    const usersList = document.getElementById('users-list');
+    let activeUserIds = new Set();
+    let allUsers = [];
+
+    function renderSidebar() {
+        if (!usersList) return;
+        usersList.innerHTML = '';
+        allUsers.forEach(user => {
+            const isActive = activeUserIds.has(user.id.toString());
+
+            const li = document.createElement('li');
+            li.className = `flex items-center space-x-3 transition-opacity duration-300 ${isActive ? 'opacity-100' : 'opacity-50 grayscale'}`;
+            li.id = `sidebar-user-${user.id}`;
+
+            const avatarContainer = document.createElement('div');
+            avatarContainer.className = 'relative';
+
+            const img = document.createElement('img');
+            img.src = user.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.username)}`;
+            img.alt = user.username;
+            img.className = `w-10 h-10 rounded-full border-2 ${isActive ? 'border-green-500' : 'border-gray-500'}`;
+
+            avatarContainer.appendChild(img);
+
+            if (isActive) {
+                const statusDot = document.createElement('span');
+                statusDot.className = 'absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full';
+                avatarContainer.appendChild(statusDot);
+            }
+
+            const nameSpan = document.createElement('span');
+            const isMe = user.id == currentUserId;
+            nameSpan.className = `font-medium ${isMe ? 'text-blue-400' : 'text-gray-200'}`;
+            nameSpan.innerText = user.username + (isMe ? ' (You)' : '');
+
+            li.appendChild(avatarContainer);
+            li.appendChild(nameSpan);
+
+            usersList.appendChild(li);
+        });
+    }
+
+    // Fetch initial users list
+    fetch('api/get_users.php')
+        .then(res => res.json())
+        .then(users => {
+            if (Array.isArray(users)) {
+                allUsers = users;
+                renderSidebar();
+            }
+        })
+        .catch(err => console.error('Error fetching users:', err));
+
+
+    // Clipboard Paste Magic
+    chatInput.addEventListener('paste', (e) => {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file' && item.type.startsWith('image/')) {
+                e.preventDefault(); // Stop normal paste
+                const blob = item.getAsFile();
+
+                const formData = new FormData();
+                formData.append('image', blob);
+
+                // Show some feedback ideally, but keeping it silent/simple as requested
+                fetch('api/upload.php', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(res => res.json())
+                .then(data => {
+                    if (data.success && data.url) {
+                        // Automatically send message with image URL
+                        return fetch('api/send.php', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({
+                                content: data.url,
+                                message_type: 'image'
+                            })
+                        });
+                    } else {
+                        console.error('Upload failed:', data.error);
+                        alert(data.error || 'Upload failed');
+                    }
+                })
+                .then(res => {
+                    if (res) return res.json();
+                })
+                .then(sendData => {
+                    if (sendData && sendData.error) {
+                        console.error('Send error:', sendData.error);
+                    } else if (sendData && sendData.success && sendData.message) {
+                         if(sendData.pusher_error) {
+                             chatWindow.appendChild(renderMessage(sendData.message));
+                             scrollToBottom();
+                         }
+                    }
+                })
+                .catch(err => console.error('Error during paste upload pipeline:', err));
+            }
+        }
+    });
+
     // Initialize Pusher
     function initPusher() {
         // Placeholders match what was in chat-widget.js
         const pusher = new Pusher('YOUR_PUSHER_KEY_PLACEHOLDER', {
             cluster: 'YOUR_PUSHER_CLUSTER_PLACEHOLDER',
-            forceTLS: true
+            forceTLS: true,
+            authEndpoint: 'api/pusher_auth.php'
         });
 
+        // Global chat subscription
         const channel = pusher.subscribe('global-chat-channel');
-
         channel.bind('new-message', function(data) {
             chatWindow.appendChild(renderMessage(data));
             scrollToBottom();
+        });
+
+        // Presence channel subscription
+        const presenceChannel = pusher.subscribe('presence-global-chat');
+
+        presenceChannel.bind('pusher:subscription_succeeded', (members) => {
+            members.each((member) => {
+                activeUserIds.add(member.id.toString());
+            });
+            renderSidebar();
+        });
+
+        presenceChannel.bind('pusher:member_added', (member) => {
+            activeUserIds.add(member.id.toString());
+            renderSidebar();
+        });
+
+        presenceChannel.bind('pusher:member_removed', (member) => {
+            activeUserIds.delete(member.id.toString());
+            renderSidebar();
         });
     }
 

@@ -34,21 +34,8 @@
         <!-- Left Sidebar: Users -->
         <aside class="w-1/4 bg-gray-800 border-r border-gray-700 p-4 flex flex-col h-full overflow-y-auto">
             <h2 class="text-lg font-semibold text-gray-300 mb-4 border-b border-gray-700 pb-2">Active Personnel</h2>
-            <ul class="space-y-3">
-                <li class="flex items-center space-x-3">
-                    <div class="relative">
-                        <img src="https://ui-avatars.com/api/?name=Admin" alt="Admin" class="w-10 h-10 rounded-full border-2 border-green-500">
-                        <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></span>
-                    </div>
-                    <span class="text-gray-200 font-medium">Admin</span>
-                </li>
-                <li class="flex items-center space-x-3">
-                    <div class="relative">
-                        <img src="https://ui-avatars.com/api/?name=Jules" alt="Jules" class="w-10 h-10 rounded-full border-2 border-green-500">
-                        <span class="absolute bottom-0 right-0 w-3 h-3 bg-green-500 border-2 border-gray-800 rounded-full"></span>
-                    </div>
-                    <span class="text-blue-400 font-medium">Jules (You)</span>
-                </li>
+            <ul id="users-list" class="space-y-3">
+                <!-- Users will be injected here dynamically -->
             </ul>
         </aside>
 
